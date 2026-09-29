@@ -5,8 +5,8 @@ import { expireStaleOffers } from "@/lib/waitlist";
 
 /**
  * Sweeper for lapsed seat holds and stale waitlist offers.
- * Meant for Vercel Cron (every minute), but the app also expires lazily
- * on read so this is belt-and-suspenders.
+ * Meant for Vercel Cron (daily on Hobby; every few minutes on Pro), but the
+ * app also expires lazily on read so this is belt-and-suspenders.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
