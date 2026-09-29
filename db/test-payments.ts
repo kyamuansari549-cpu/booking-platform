@@ -50,6 +50,8 @@ function ok(name: string, cond: boolean) {
 async function main() {
   const sql = readFileSync("db/migrations/0000_wet_dorian_gray.sql", "utf8");
   await pg.exec(sql);
+  const sql1 = readFileSync("db/migrations/0001_add_checked_in_at.sql", "utf8");
+  await pg.exec(sql1);
 
   // ---- fixture: event with one tier, 2 seats ----
   const [owner] = await tdb

@@ -1,7 +1,8 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, type SQL } from "drizzle-orm";
 import {
   bookings,
   bookingSeats,
+  events,
   payments,
   seats,
 } from "@/db/schema";
@@ -182,37 +183,16 @@ export type RefundFn = (
 /**
  * Refund a CONFIRMED booking: refund via provider, release seats, then
  * offer the freed seats to the waitlist. refundFn is injectable for tests.
+ * The caller must have already verified the booking is CONFIRMED with a
+ * CAPTURED payment and that the actor is authorized.
  */
-export async function refundBooking(
+export async function executeRefund(
   db: Db,
-  bookingId: string,
-  userId: string,
+  booking: typeof bookings.$inferSelect,
+  payment: typeof payments.$inferSelect,
   refundFn: RefundFn = createRazorpayRefund
 ): Promise<{ refundId: string }> {
-  const [booking] = await db
-    .select()
-    .from(bookings)
-    .where(
-      and(
-        eq(bookings.id, bookingId),
-        eq(bookings.userId, userId),
-        eq(bookings.status, "CONFIRMED")
-      )
-    )
-    .limit(1);
-  if (!booking) throw new Error("Confirmed booking not found");
-
-  const [payment] = await db
-    .select()
-    .from(payments)
-    .where(
-      and(
-        eq(payments.bookingId, bookingId),
-        eq(payments.status, "CAPTURED")
-      )
-    )
-    .limit(1);
-  if (!payment?.providerPaymentId) throw new Error("Captured payment not found");
+  if (!payment.providerPaymentId) throw new Error("Captured payment not found");
 
   let refundId: string;
   try {
@@ -229,7 +209,7 @@ export async function refundBooking(
     .select({ tierId: seats.tierId })
     .from(bookingSeats)
     .innerJoin(seats, eq(seats.id, bookingSeats.seatId))
-    .where(eq(bookingSeats.bookingId, bookingId));
+    .where(eq(bookingSeats.bookingId, booking.id));
   const tierIds = [...new Set(seatTiers.map((s) => s.tierId))];
 
   await db.transaction(async (tx) => {
@@ -237,7 +217,7 @@ export async function refundBooking(
     const links = await t
       .select({ seatId: bookingSeats.seatId })
       .from(bookingSeats)
-      .where(eq(bookingSeats.bookingId, bookingId));
+      .where(eq(bookingSeats.bookingId, booking.id));
     const seatIds = links.map((l) => l.seatId);
 
     await t
@@ -247,7 +227,7 @@ export async function refundBooking(
     await t
       .update(bookings)
       .set({ status: "REFUNDED", updatedAt: new Date() })
-      .where(eq(bookings.id, bookingId));
+      .where(eq(bookings.id, booking.id));
     if (seatIds.length > 0) {
       await t
         .update(seats)
@@ -261,4 +241,72 @@ export async function refundBooking(
   }
 
   return { refundId };
+}
+
+async function loadRefundable(
+  db: Db,
+  bookingId: string,
+  extra: SQL | undefined
+) {
+  const conditions = [
+    eq(bookings.id, bookingId),
+    eq(bookings.status, "CONFIRMED"),
+    ...(extra ? [extra] : []),
+  ];
+  const [booking] = await db
+    .select()
+    .from(bookings)
+    .where(and(...conditions))
+    .limit(1);
+  if (!booking) throw new Error("Confirmed booking not found");
+
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.bookingId, bookingId),
+        eq(payments.status, "CAPTURED")
+      )
+    )
+    .limit(1);
+  if (!payment?.providerPaymentId) throw new Error("Captured payment not found");
+  return { booking, payment };
+}
+
+/** User-initiated refund of their own CONFIRMED booking. */
+export async function refundBooking(
+  db: Db,
+  bookingId: string,
+  userId: string,
+  refundFn: RefundFn = createRazorpayRefund
+): Promise<{ refundId: string }> {
+  const { booking, payment } = await loadRefundable(
+    db,
+    bookingId,
+    eq(bookings.userId, userId)
+  );
+  return executeRefund(db, booking, payment, refundFn);
+}
+
+/** Organizer-initiated refund of a CONFIRMED booking on their event. */
+export async function refundBookingAsOrganizer(
+  db: Db,
+  organizerId: string,
+  bookingId: string,
+  refundFn: RefundFn = createRazorpayRefund
+): Promise<{ refundId: string }> {
+  const [row] = await db
+    .select({ organizerId: events.organizerId })
+    .from(bookings)
+    .innerJoin(events, eq(events.id, bookings.eventId))
+    .where(
+      and(eq(bookings.id, bookingId), eq(bookings.status, "CONFIRMED"))
+    )
+    .limit(1);
+  if (!row || row.organizerId !== organizerId) {
+    throw new Error("Booking not found on your events");
+  }
+  const { booking, payment } = await loadRefundable(db, bookingId, undefined);
+  return executeRefund(db, booking, payment, refundFn);
 }

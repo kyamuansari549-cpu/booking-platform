@@ -130,6 +130,7 @@ export const bookings = pgTable(
     status: bookingStatusEnum("status").notNull().default("PENDING"),
     totalAmount: integer("total_amount").notNull(), // paise
     holdExpiresAt: timestamp("hold_expires_at"),
+    checkedInAt: timestamp("checked_in_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

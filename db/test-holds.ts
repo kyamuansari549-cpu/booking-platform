@@ -30,9 +30,11 @@ function ok(name: string, cond: boolean) {
 }
 
 async function main() {
-  // Apply the generated migration.
+  // Apply migrations in order.
   const sql = readFileSync("db/migrations/0000_wet_dorian_gray.sql", "utf8");
   await pg.exec(sql);
+  const sql1 = readFileSync("db/migrations/0001_add_checked_in_at.sql", "utf8");
+  await pg.exec(sql1);
 
   const [user] = await tdb
     .insert(schema.users)
