@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { createHold, releaseHold, SeatUnavailableError } from "@/lib/holds";
+import { acceptWaitlistOffer } from "@/lib/waitlist";
 
 const holdSchema = z.object({
   eventId: z.string().uuid(),
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
       parsed.data.eventId,
       parsed.data.seatIds
     );
+    // If this user had a waitlist offer for the event, the hold claims it.
+    await acceptWaitlistOffer(db, session.user.id, parsed.data.eventId);
     return NextResponse.json(hold, { status: 201 });
   } catch (e) {
     if (e instanceof SeatUnavailableError) {

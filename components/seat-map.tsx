@@ -29,14 +29,24 @@ function seatClass(status: Seat["status"], selected: boolean) {
   return "border-black/10 text-zinc-400 cursor-not-allowed dark:border-white/10 dark:text-zinc-600";
 }
 
+import { JoinWaitlistButton } from "./waitlist-buttons";
+
+export type WaitlistInfo = {
+  tierId: string | null;
+  position: number;
+  status: "WAITING" | "OFFERED" | "ACCEPTED" | "EXPIRED";
+};
+
 export function SeatMap({
   eventId,
   tiers,
   signedIn,
+  waitlist = [],
 }: {
   eventId: string;
   tiers: Tier[];
   signedIn: boolean;
+  waitlist?: WaitlistInfo[];
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -121,14 +131,29 @@ export function SeatMap({
         </span>
       </div>
 
-      {rowsByTier.map(({ tier, rows }) => (
+      {rowsByTier.map(({ tier, rows }) => {
+        const available = tier.seats.filter((s) => s.status === "AVAILABLE").length;
+        const entry = waitlist.find((w) => w.tierId === tier.id);
+        return (
         <div key={tier.id} className="mt-8">
-          <div className="flex items-baseline justify-between">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-semibold">
               {tier.name} <span className="font-normal text-zinc-500">· {inr(tier.price)}</span>
             </h3>
-            <span className="text-xs text-zinc-500">
-              {tier.seats.filter((s) => s.status === "AVAILABLE").length} of {tier.seats.length} available
+            <span className="flex items-center gap-2 text-xs text-zinc-500">
+              {entry && entry.status === "OFFERED" ? (
+                <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                  Seats are being held for you — pick them above
+                </span>
+              ) : available === 0 ? (
+                entry ? (
+                  <span>You're #{entry.position} on the waitlist</span>
+                ) : (
+                  <JoinWaitlistButton eventId={eventId} tierId={tier.id} signedIn={signedIn} />
+                )
+              ) : (
+                <>{available} of {tier.seats.length} available</>
+              )}
             </span>
           </div>
           <div className="mt-2 overflow-x-auto rounded-xl border border-black/10 p-4 dark:border-white/10">
@@ -156,7 +181,8 @@ export function SeatMap({
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {error && (
         <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">

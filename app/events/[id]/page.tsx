@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { events, seats, ticketTiers } from "@/db/schema";
+import { events, seats, ticketTiers, waitlistEntries } from "@/db/schema";
 import { expireStaleHolds } from "@/lib/holds";
+import { expireStaleOffers } from "@/lib/waitlist";
 import { formatDateTime, inr } from "@/lib/format";
 import { SeatMap } from "@/components/seat-map";
 
@@ -15,8 +16,10 @@ export default async function EventPage({
   const { id } = await params;
   const session = await auth();
 
-  // Release lapsed holds so the map never shows stale HELD seats.
+  // Release lapsed holds so the map never shows stale HELD seats,
+  // and expire stale waitlist offers.
   await expireStaleHolds(db);
+  await expireStaleOffers(db);
 
   const [event] = await db
     .select()
@@ -96,6 +99,27 @@ export default async function EventPage({
           eventId={event.id}
           tiers={tiersWithSeats}
           signedIn={!!session?.user}
+          waitlist={
+            session?.user
+              ? await db
+                  .select({
+                    tierId: waitlistEntries.tierId,
+                    position: waitlistEntries.position,
+                    status: waitlistEntries.status,
+                  })
+                  .from(waitlistEntries)
+                  .where(
+                    and(
+                      eq(waitlistEntries.userId, session.user.id),
+                      eq(waitlistEntries.eventId, event.id),
+                      or(
+                        eq(waitlistEntries.status, "WAITING"),
+                        eq(waitlistEntries.status, "OFFERED")
+                      )
+                    )
+                  )
+              : []
+          }
         />
       </div>
     </div>

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { expireStaleHolds } from "@/lib/holds";
+import { expireStaleOffers } from "@/lib/waitlist";
 
 /**
- * Sweeper for lapsed seat holds. Meant for Vercel Cron (every minute),
- * but the app also expires lazily on read so this is belt-and-suspenders.
+ * Sweeper for lapsed seat holds and stale waitlist offers.
+ * Meant for Vercel Cron (every minute), but the app also expires lazily
+ * on read so this is belt-and-suspenders.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -16,5 +18,6 @@ export async function GET(req: Request) {
   }
 
   const expired = await expireStaleHolds(db);
-  return NextResponse.json({ expired });
+  const offersExpired = await expireStaleOffers(db);
+  return NextResponse.json({ expired, offersExpired });
 }

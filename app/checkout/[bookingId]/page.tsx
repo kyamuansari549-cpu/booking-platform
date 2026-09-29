@@ -6,6 +6,7 @@ import { getBookingForUser } from "@/lib/holds";
 import { inr } from "@/lib/format";
 import { HoldCountdown } from "@/components/hold-countdown";
 import { ReleaseHoldButton } from "@/components/release-hold-button";
+import { RazorpayPayButton } from "@/components/razorpay-pay-button";
 
 export default async function CheckoutPage({
   params,
@@ -90,14 +91,7 @@ export default async function CheckoutPage({
       </div>
 
       <div className="mt-6">
-        <button
-          type="button"
-          disabled
-          title="Razorpay integration lands in Phase 3"
-          className="w-full cursor-not-allowed rounded-full bg-zinc-300 px-6 py-3 text-sm font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-        >
-          Pay {inr(booking.totalAmount)} — coming in Phase 3
-        </button>
+        <RazorpayPayButton bookingId={booking.id} label={inr(booking.totalAmount)} />
         <div className="mt-3 text-center">
           <ReleaseHoldButton bookingId={booking.id} />
         </div>

@@ -5,6 +5,9 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { bookings, events } from "@/db/schema";
 import { inr, formatDateTime } from "@/lib/format";
+import { getUserWaitlist } from "@/lib/waitlist";
+import { CancelBookingButton } from "@/components/cancel-booking-button";
+import { LeaveWaitlistButton } from "@/components/waitlist-buttons";
 
 const badge: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300",
@@ -34,6 +37,10 @@ export default async function BookingsPage() {
     .innerJoin(events, eq(bookings.eventId, events.id))
     .where(eq(bookings.userId, session.user.id))
     .orderBy(desc(bookings.createdAt));
+
+  const waitlist = (await getUserWaitlist(db, session.user.id)).filter(
+    (w) => w.status === "WAITING" || w.status === "OFFERED"
+  );
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
@@ -76,10 +83,56 @@ export default async function BookingsPage() {
                     Continue
                   </Link>
                 )}
+                {(b.status === "PENDING" || b.status === "CONFIRMED") && (
+                  <CancelBookingButton bookingId={b.id} status={b.status} />
+                )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {waitlist.length > 0 && (
+        <div className="mt-12">
+          <h2 className="text-xl font-semibold">My waitlist</h2>
+          <ul className="mt-4 space-y-3">
+            {waitlist.map((w) => (
+              <li
+                key={w.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/10 p-4 dark:border-white/10"
+              >
+                <div>
+                  <p className="text-sm font-semibold">
+                    {w.eventTitle}
+                    {w.tierName && (
+                      <span className="font-normal text-zinc-500"> · {w.tierName}</span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {w.status === "OFFERED" ? (
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                        Seats opened up for you — offer expires 24h after it was made
+                      </span>
+                    ) : (
+                      <>Position #{w.position} in line</>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {w.status === "OFFERED" && (
+                    <Link
+                      href={`/events/${w.eventId}`}
+                      className="rounded-full bg-zinc-950 px-4 py-1.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    >
+                      Book now
+                    </Link>
+                  )}
+                  <LeaveWaitlistButton entryId={w.id} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
