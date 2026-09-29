@@ -1,0 +1,211 @@
+// Booking platform data model — Phase 1
+// Money stored in paise (INR minor units). Seat holds use Redis TTL; DB is source of truth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ORGANIZER
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum SeatStatus {
+  AVAILABLE
+  HELD
+  SOLD
+}
+
+enum BookingStatus {
+  PENDING    // seats held, payment not complete
+  CONFIRMED  // payment captured
+  CANCELLED  // user cancelled before payment
+  REFUNDED   // payment refunded
+  EXPIRED    // hold TTL lapsed
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum WaitlistStatus {
+  WAITING
+  OFFERED
+  ACCEPTED
+  EXPIRED
+}
+
+// ---------- Auth.js models ----------
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(USER)
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]         @relation("OrganizerEvents")
+  bookings      Booking[]
+  waitlist      WaitlistEntry[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Domain models ----------
+model Event {
+  id          String      @id @default(cuid())
+  title       String
+  description String      @db.Text
+  venue       String
+  city        String      @default("")
+  startsAt    DateTime
+  endsAt      DateTime
+  status      EventStatus @default(DRAFT)
+  coverImage  String?
+  organizerId String
+  organizer   User         @relation("OrganizerEvents", fields: [organizerId], references: [id])
+  tiers       TicketTier[]
+  bookings    Booking[]
+  waitlist    WaitlistEntry[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, startsAt])
+  @@index([organizerId])
+}
+
+model TicketTier {
+  id       String @id @default(cuid())
+  eventId  String
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name     String // "VIP", "General"
+  price    Int    // paise
+  capacity Int
+  seats    Seat[]
+
+  @@index([eventId])
+}
+
+model Seat {
+  id       String     @id @default(cuid())
+  tierId   String
+  tier     TicketTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  label    String // "A-12"
+  row      String
+  number   Int
+  status   SeatStatus @default(AVAILABLE)
+  bookings BookingSeat[]
+
+  @@unique([tierId, label])
+  @@index([tierId, status])
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  eventId       String
+  event         Event         @relation(fields: [eventId], references: [id])
+  status        BookingStatus @default(PENDING)
+  totalAmount   Int // paise
+  seats         BookingSeat[]
+  payment       Payment?
+  holdExpiresAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([eventId, status])
+}
+
+model BookingSeat {
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seatId    String
+  seat      Seat    @relation(fields: [seatId], references: [id])
+
+  @@id([bookingId, seatId])
+  @@index([seatId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  bookingId         String        @unique
+  booking           Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider          String        @default("razorpay")
+  providerOrderId   String?       @unique
+  providerPaymentId String?       @unique
+  amount            Int // paise
+  currency          String        @default("INR")
+  status            PaymentStatus @default(CREATED)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model WaitlistEntry {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tierId      String?
+  seatsWanted Int            @default(1)
+  position    Int
+  status      WaitlistStatus @default(WAITING)
+  offeredAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, eventId, tierId])
+  @@index([eventId, status, position])
+}
