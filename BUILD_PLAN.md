@@ -4,43 +4,54 @@
 **Why:** Full-stack interview signal — auth, realtime seat holds, payment webhooks, queues, dashboards.
 **Stack:** Next.js 16 (App Router) · TypeScript · Tailwind v4 · Drizzle ORM + Postgres · Auth.js v5 (Google, JWT) · Razorpay · Redis (Upstash) seat holds · Vercel + Neon
 
-## Phase 1 — Foundation ✅ (in progress)
-- [x] Next.js scaffold, Tailwind, TS
-- [x] Prisma schema (users, events, tiers, seats, bookings, payments, waitlist)
-- [x] `.env.example`, Prisma client singleton
-- [ ] Auth.js: Google OAuth + Prisma adapter, sign-in/out UI
-- [ ] Seed script: demo organizer + 2 events with seat maps
-- [ ] Base layout, landing page, auth-gated routes
+## Phase 1 — Foundation ✅
+- Next.js scaffold, Tailwind, TS
+- Drizzle schema (users, events, tiers, seats, bookings, payments, waitlist)
+- Auth.js v5: Google OAuth, JWT sessions, role sync
+- Seed script: 2 demo events, 320 seats
+- Landing page + authenticated header
 
 ## Phase 2 — Events & booking flow ✅
-- [x] Event CRUD for organizers (draft → published)
-- [x] Seat-map designer: rows × seats per tier, auto-generate labels (A-1…)
-- [x] Public event listing + event detail with interactive seat map
-- [x] Seat hold: select seats → 10-min hold (SELECT FOR UPDATE + Redis fast-fail), booking in PENDING
-- [x] Checkout page with live countdown; hold expiry sweeper (cron route + lazy expiry on read)
-- [x] My bookings page
-- [x] Hold logic verified: 12/12 tests pass on PGlite incl. 5-way race for one seat
+- Event CRUD for organizers (draft → published)
+- Seat-map designer: rows × seats per tier, auto-generated labels (A-1…)
+- Public event listing + event detail with interactive seat map
+- Seat hold: 10-min hold (SELECT FOR UPDATE + Redis fast-fail), PENDING booking
+- Checkout page with live countdown; expiry sweeper (cron route + lazy expiry on read)
+- My bookings page
+- Hold logic verified: 12/12 tests on PGlite incl. 5-way race for one seat
 
-## Phase 3 — Payments, waitlist, refunds
-- Razorpay order creation + checkout.js integration
-- Webhook: verify signature → CONFIRM booking, mark seats SOLD
-- Failure path: payment failed → release seats
-- Sold-out → waitlist join; on cancellation, offer seats in position order (24h offer window)
-- User-initiated cancellation + Razorpay refunds → REFUNDED, seats released
+## Phase 3 — Payments, waitlist, refunds ✅
+- Razorpay order creation + checkout.js integration (`/api/payments/orders`, `/api/payments/verify`)
+- Webhook (`/api/webhooks/razorpay`): raw-body signature verification, idempotent
+  `payment.captured` → CONFIRMED / SOLD, `payment.failed` → release
+- Late-capture edge: payment captured after hold lapsed → recorded + auto-refunded
+  (verify path) or recorded for organizer refund (webhook path)
+- Waitlist: join/leave, position ordering, 24h offers on freed seats, expiry cascade,
+  claim via hold
+- User cancellation: PENDING → release; CONFIRMED → Razorpay refund → REFUNDED
+- 36/36 payment + waitlist tests on PGlite
 
-## Phase 4 — Organizer dashboard
-- Sales overview: revenue, tickets sold, occupancy per tier
-- Attendee list, check-in toggle (QR optional stretch)
-- Event analytics charts, refund management
+## Phase 4 — Organizer dashboard ✅
+- Overview: revenue, tickets sold, events, waitlist totals
+- Per-event dashboard: stat cards, per-tier table with occupancy bars, 14-day sales
+  SVG chart, attendee list
+- Check-in toggle (`checkedInAt` on bookings, migration 0001)
+- Organizer-initiated refunds (scoped to own events)
+- 32/32 organizer tests on PGlite
 
-## Phase 5 — Ship it
-- Deploy: Vercel + Neon + Upstash
-- README: architecture diagram, setup, API notes, demo credentials
-- Seed demo data on prod, record 60-sec demo video/GIF
-- Resume bullets + talking points
+## Phase 5 — Ship it ✅
+- `vercel.json` cron (every 5 min) for the hold/offer sweeper
+- README with architecture diagram, setup, API notes
+- `docs/demo-script.md` — 60-second demo walkthrough
+- `docs/interview-prep.md` — resume bullets + talking points
+- ⏳ Needs from user: Neon DATABASE_URL, Auth.js secret + Google OAuth keys,
+  Razorpay test keys + webhook secret, Upstash Redis URL/token → then deploy
 
-## Decisions (defaults — flag to change)
-- Payments: **Razorpay** (INR-native). Needs test API keys from user.
-- DB: **Neon** free tier. Needs user to create project → DATABASE_URL.
-- Redis: **Upstash** free tier. Needs user to create DB → REDIS_URL.
-- Auth: Google OAuth only (fastest credible). Needs OAuth client ID/secret.
+## Decisions
+- Payments: **Razorpay** (INR-native). Test-mode keys required for live checkout.
+- DB: **Neon** Postgres. `DATABASE_URL` required for migrate/seed/deploy.
+- Seat holds: **Postgres is the source of truth** (`SELECT … FOR UPDATE`); Redis
+  (Upstash) is a best-effort fast-fail layer only.
+- Auth: Google OAuth only (Auth.js v5, JWT sessions).
+- Money-safety rule: every payment state transition is idempotent and
+  signature-verified; no transition can lose or double-count money.
