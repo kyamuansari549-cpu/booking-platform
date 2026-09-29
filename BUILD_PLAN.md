@@ -12,13 +12,14 @@
 - [ ] Seed script: demo organizer + 2 events with seat maps
 - [ ] Base layout, landing page, auth-gated routes
 
-## Phase 2 — Events & booking flow
-- Event CRUD for organizers (draft → published)
-- Seat-map designer: rows × seats per tier, auto-generate labels (A-1…)
-- Public event listing + event detail with interactive seat map
-- Seat hold: select seats → 10-min hold via Redis TTL (DB fallback), booking in PENDING
-- Checkout page; hold expiry sweeper (cron/interval)
-- My bookings page
+## Phase 2 — Events & booking flow ✅
+- [x] Event CRUD for organizers (draft → published)
+- [x] Seat-map designer: rows × seats per tier, auto-generate labels (A-1…)
+- [x] Public event listing + event detail with interactive seat map
+- [x] Seat hold: select seats → 10-min hold (SELECT FOR UPDATE + Redis fast-fail), booking in PENDING
+- [x] Checkout page with live countdown; hold expiry sweeper (cron route + lazy expiry on read)
+- [x] My bookings page
+- [x] Hold logic verified: 12/12 tests pass on PGlite incl. 5-way race for one seat
 
 ## Phase 3 — Payments, waitlist, refunds
 - Razorpay order creation + checkout.js integration

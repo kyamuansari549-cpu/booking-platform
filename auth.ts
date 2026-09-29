@@ -42,10 +42,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
       return true;
     },
-    async jwt({ token, user }) {
-      // First call after signIn has `user`; later calls reuse the token.
-      const email = user?.email ?? token.email;
-      if (email && !token.uid) {
+    async jwt({ token }) {
+      // Sync id/role from the DB on every call so role changes
+      // (e.g. USER → ORGANIZER) take effect without re-login.
+      const email = token.email;
+      if (email) {
         const [row] = await db
           .select({ id: users.id, role: users.role })
           .from(users)
